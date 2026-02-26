@@ -459,6 +459,103 @@
 
   /* Hidden file input */
   .hidden { display: none; }
+
+  /* ── Game ── */
+  .game-container {
+    display: none;
+    background: #1a1a2e;
+    padding: 20px;
+    text-align: center;
+    position: relative;
+  }
+
+  .game-container.active { display: block; }
+
+  .game-canvas-wrapper {
+    position: relative;
+    display: inline-block;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    border: 3px solid #333;
+  }
+
+  #gameCanvas {
+    display: block;
+    image-rendering: pixelated;
+    background: #2d5a27;
+  }
+
+  .game-dialogue {
+    display: none;
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    background: rgba(0,0,0,0.92);
+    border: 2px solid #fff;
+    border-radius: 8px;
+    padding: 14px 18px;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    font-size: 15px;
+    line-height: 1.5;
+    text-align: left;
+    min-height: 70px;
+  }
+
+  .game-dialogue.active { display: block; }
+
+  .game-dialogue .speaker {
+    color: #7ce87c;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+
+  .game-dialogue .prompt-hint {
+    color: #aaa;
+    font-size: 11px;
+    margin-top: 6px;
+    text-align: right;
+  }
+
+  .game-dialogue .prompt-hint span { animation: blink 1s infinite; }
+
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0; } }
+
+  .game-header {
+    color: #aaa;
+    font-size: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .game-header span { color: #7ce87c; font-family: 'Courier New', monospace; }
+
+  .btn-close-game {
+    padding: 4px 12px;
+    background: transparent;
+    color: #aaa;
+    border: 1px solid #555;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .btn-close-game:hover { color: #fff; border-color: #999; }
+
+  .btn-break {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border-color: #a5d6a7;
+  }
+
+  .btn-break:hover { background: #c8e6c9; border-color: #81c784; }
 </style>
 </head>
 <body>
@@ -470,11 +567,27 @@
       <input type="checkbox" id="partnerToggle" checked>
       Partner Categories
     </label>
+    <button class="btn btn-break" id="breakBtn">Take a Break</button>
     <button class="btn btn-primary" id="addJobBtn">+ Add Job</button>
     <button class="btn" id="exportBtn">Export</button>
     <button class="btn" id="importBtn">Import</button>
     <button class="btn btn-danger" id="resetBtn">Reset All</button>
     <input type="file" id="importFile" accept=".json" class="hidden">
+  </div>
+</div>
+
+<div class="game-container" id="gameContainer">
+  <div class="game-header">
+    <span>Arrow keys to move, Space to talk</span>
+    <button class="btn-close-game" id="closeGameBtn">Back to Work</button>
+  </div>
+  <div class="game-canvas-wrapper">
+    <canvas id="gameCanvas" width="640" height="400"></canvas>
+    <div class="game-dialogue" id="gameDialogue">
+      <div class="speaker" id="dialogueSpeaker"></div>
+      <div id="dialogueText"></div>
+      <div class="prompt-hint">Press Space to continue <span>▼</span></div>
+    </div>
   </div>
 </div>
 
@@ -1108,6 +1221,444 @@ document.getElementById('importFile').addEventListener('change', handleImport);
 
 loadState();
 render();
+
+// ══════════════════════════════════════════════════════════════
+// ── TAKE A BREAK GAME ────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+(function() {
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const TILE = 32;
+  const COLS = W / TILE, ROWS = H / TILE; // 20x12.5
+
+  let gameActive = false;
+  let animFrame = null;
+
+  // Player
+  const player = { x: 10, y: 8, dir: 0, moving: false, frame: 0, frameTimer: 0 };
+  // dir: 0=down, 1=left, 2=right, 3=up
+
+  const keys = {};
+
+  // Dialogue
+  let dialogueQueue = [];
+  let dialogueActive = false;
+  let typewriterText = '';
+  let typewriterIdx = 0;
+  let typewriterTimer = 0;
+
+  // NPCs
+  const npcs = [
+    {
+      x: 5, y: 3, color: '#e06070', name: 'Sage',
+      lines: [
+        "Hey there! Take a deep breath.",
+        "What's one small thing that brought you joy today?",
+        "Even tiny moments matter. Hold onto that feeling."
+      ]
+    },
+    {
+      x: 15, y: 2, color: '#6090e0', name: 'River',
+      lines: [
+        "You know what I think about?",
+        "If you could do anything tomorrow with no obligations, what would it be?",
+        "That answer says a lot about what really matters to you."
+      ]
+    },
+    {
+      x: 3, y: 8, color: '#e0a030', name: 'Ember',
+      lines: [
+        "I've been thinking...",
+        "When was the last time you lost track of time doing something you loved?",
+        "Chase that feeling. It's trying to tell you something."
+      ]
+    },
+    {
+      x: 17, y: 9, color: '#50b880', name: 'Fern',
+      lines: [
+        "Oh hi! Quick question.",
+        "Who's someone that makes you feel like the best version of yourself?",
+        "Keep those people close. They're worth more than any job title."
+      ]
+    },
+    {
+      x: 10, y: 1, color: '#b070d0', name: 'Luna',
+      lines: [
+        "The stars are nice here, even in daytime.",
+        "What would you want your life to look like in 5 years... not your career, your LIFE?",
+        "Sometimes we optimize for the wrong things. Don't forget to optimize for happiness."
+      ]
+    },
+    {
+      x: 8, y: 5, color: '#d09050', name: 'Oak',
+      lines: [
+        "I like sitting by this tree.",
+        "What's one thing you'd never want to give up, no matter how good the offer?",
+        "That's your non-negotiable. Protect it fiercely."
+      ]
+    },
+  ];
+
+  // Map tiles: 0=grass, 1=dark grass, 2=path, 3=water, 4=tree, 5=flowers, 6=rock
+  const MAP_ROWS = Math.ceil(H / TILE);
+  const MAP_COLS = Math.ceil(W / TILE);
+  const map = [];
+
+  function generateMap() {
+    // Fill with grass
+    for (let y = 0; y < MAP_ROWS; y++) {
+      map[y] = [];
+      for (let x = 0; x < MAP_COLS; x++) {
+        map[y][x] = Math.random() < 0.35 ? 1 : 0; // grass mix
+      }
+    }
+    // Paths (horizontal and vertical cross)
+    for (let x = 0; x < MAP_COLS; x++) { map[6][x] = 2; map[7][x] = 2; }
+    for (let y = 0; y < MAP_ROWS; y++) { map[y][10] = 2; map[y][11] = 2; }
+
+    // Water pond
+    for (let y = 4; y <= 5; y++) for (let x = 13; x <= 15; x++) map[y][x] = 3;
+    map[3][14] = 3; map[6][14] = 2; // path stays
+
+    // Trees along edges
+    for (let x = 0; x < MAP_COLS; x++) { if (map[0][x] !== 2 && map[0][x] !== 3) map[0][x] = 4; }
+    for (let y = 0; y < MAP_ROWS; y++) { if (map[y][0] !== 2) map[y][0] = 4; if (map[y][MAP_COLS-1] !== 2) map[y][MAP_COLS-1] = 4; }
+    if (MAP_ROWS > 12) for (let x = 0; x < MAP_COLS; x++) { if (map[12][x] !== 2) map[12][x] = 4; }
+
+    // Scatter some trees and flowers
+    const decorations = [[2,4,4],[4,9,4],[7,17,4],[9,3,5],[2,8,5],[5,18,5],[8,14,5],[10,6,5],[3,1,6],[9,19,6],[11,12,5]];
+    for (const [dy, dx, t] of decorations) {
+      if (dy < MAP_ROWS && dx < MAP_COLS && map[dy][dx] < 2) map[dy][dx] = t;
+    }
+
+    // Make sure NPC and player positions are walkable
+    for (const npc of npcs) { if (npc.y < MAP_ROWS && npc.x < MAP_COLS) map[npc.y][npc.x] = 0; }
+    map[player.y][player.x] = 2;
+  }
+
+  function isBlocked(x, y) {
+    if (x < 0 || y < 0 || x >= MAP_COLS || y >= MAP_ROWS) return true;
+    const t = map[y][x];
+    if (t === 3 || t === 4 || t === 6) return true;
+    for (const n of npcs) { if (n.x === x && n.y === y) return true; }
+    return false;
+  }
+
+  // ── Drawing ──
+
+  const COLORS = {
+    grass:     ['#4a8c38','#3d7a2e'],
+    darkGrass: ['#3d7a2e','#357026'],
+    path:      ['#c8b478','#baa868'],
+    water:     ['#3088c0','#2878b0'],
+    tree:      '#2d5a1e',
+    treeTrunk: '#6b4226',
+    flower:    ['#e85080','#e0d040','#60a0e0','#e08030'],
+    rock:      '#888',
+  };
+
+  let tick = 0;
+
+  function drawTile(x, y) {
+    const px = x * TILE, py = y * TILE;
+    const t = map[y][x];
+    const checker = (x + y) % 2;
+
+    if (t <= 1) {
+      ctx.fillStyle = t === 0 ? COLORS.grass[checker] : COLORS.darkGrass[checker];
+      ctx.fillRect(px, py, TILE, TILE);
+      // Grass blades
+      if ((x * 7 + y * 13) % 5 === 0) {
+        ctx.strokeStyle = '#5a9c48';
+        ctx.lineWidth = 1;
+        const bx = px + (x * 3 % 20) + 6;
+        const by = py + (y * 7 % 20) + 8;
+        ctx.beginPath(); ctx.moveTo(bx, by + 8); ctx.lineTo(bx - 2, by); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx + 4, by + 8); ctx.lineTo(bx + 6, by + 2); ctx.stroke();
+      }
+    } else if (t === 2) {
+      ctx.fillStyle = COLORS.path[checker];
+      ctx.fillRect(px, py, TILE, TILE);
+      // Path texture dots
+      if ((x * 11 + y * 7) % 4 === 0) {
+        ctx.fillStyle = '#b09858';
+        ctx.fillRect(px + 8, py + 12, 2, 2);
+        ctx.fillRect(px + 20, py + 6, 2, 2);
+      }
+    } else if (t === 3) {
+      ctx.fillStyle = COLORS.water[(tick + x + y) % 2 === 0 ? 0 : 1];
+      ctx.fillRect(px, py, TILE, TILE);
+      // Sparkle
+      const sparkleX = (tick * 3 + x * 17) % 28 + px;
+      const sparkleY = (tick * 5 + y * 11) % 24 + py;
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillRect(sparkleX, sparkleY, 3, 2);
+    } else if (t === 4) {
+      // Ground
+      ctx.fillStyle = COLORS.grass[checker];
+      ctx.fillRect(px, py, TILE, TILE);
+      // Trunk
+      ctx.fillStyle = COLORS.treeTrunk;
+      ctx.fillRect(px + 12, py + 18, 8, 14);
+      // Canopy
+      ctx.fillStyle = '#2d6b1e';
+      ctx.beginPath();
+      ctx.arc(px + 16, py + 14, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3a8828';
+      ctx.beginPath();
+      ctx.arc(px + 14, py + 11, 9, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (t === 5) {
+      ctx.fillStyle = COLORS.grass[checker];
+      ctx.fillRect(px, py, TILE, TILE);
+      // Flowers
+      const fc = COLORS.flower[(x * 3 + y * 7) % 4];
+      const sway = Math.sin(tick * 0.1 + x + y) * 1.5;
+      ctx.fillStyle = '#4a8c38';
+      ctx.fillRect(px + 14, py + 14, 2, 12);
+      ctx.fillStyle = fc;
+      ctx.beginPath();
+      ctx.arc(px + 15 + sway, py + 12, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(px + 15 + sway, py + 12, 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (t === 6) {
+      ctx.fillStyle = COLORS.grass[checker];
+      ctx.fillRect(px, py, TILE, TILE);
+      ctx.fillStyle = COLORS.rock;
+      ctx.beginPath();
+      ctx.ellipse(px + 16, py + 20, 12, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#999';
+      ctx.beginPath();
+      ctx.ellipse(px + 14, py + 17, 8, 5, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawSprite(x, y, dir, frame, color) {
+    const px = x * TILE, py = y * TILE;
+    const bounce = Math.sin(frame * 0.5) * 1.5;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(px + 16, py + 30, 10, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body
+    ctx.fillStyle = color;
+    ctx.fillRect(px + 8, py + 12 + bounce, 16, 14);
+
+    // Head
+    ctx.fillStyle = '#fdd';
+    ctx.beginPath();
+    ctx.arc(px + 16, py + 10 + bounce, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = '#333';
+    if (dir === 3) {
+      // facing up, no eyes visible
+    } else if (dir === 1) {
+      ctx.fillRect(px + 11, py + 8 + bounce, 3, 3);
+    } else if (dir === 2) {
+      ctx.fillRect(px + 18, py + 8 + bounce, 3, 3);
+    } else {
+      ctx.fillRect(px + 12, py + 8 + bounce, 3, 3);
+      ctx.fillRect(px + 18, py + 8 + bounce, 3, 3);
+    }
+
+    // Feet
+    ctx.fillStyle = '#555';
+    const step = Math.sin(frame * 0.6) * 3;
+    ctx.fillRect(px + 9 + step, py + 26 + bounce, 6, 4);
+    ctx.fillRect(px + 17 - step, py + 26 + bounce, 6, 4);
+  }
+
+  function drawNPC(npc) {
+    drawSprite(npc.x, npc.y, 0, tick * 0.02, npc.color);
+    // Name tag
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    const tw = ctx.measureText(npc.name).width;
+    ctx.fillRect(npc.x * TILE + 16 - tw/2 - 3, npc.y * TILE - 2, tw + 6, 14);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(npc.name, npc.x * TILE + 16, npc.y * TILE + 8);
+    ctx.textAlign = 'left';
+
+    // Interaction indicator
+    const dist = Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y);
+    if (dist <= 2 && !dialogueActive) {
+      const bob = Math.sin(tick * 0.08) * 3;
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('!', npc.x * TILE + 16, npc.y * TILE - 6 + bob);
+      ctx.textAlign = 'left';
+    }
+  }
+
+  function drawPlayer() {
+    drawSprite(player.x, player.y, player.dir, player.moving ? tick * 0.15 : 0, '#4488cc');
+  }
+
+  // ── Dialogue ──
+
+  function showDialogue(npc) {
+    dialogueQueue = npc.lines.map(line => ({ speaker: npc.name, text: line }));
+    nextDialogueLine();
+  }
+
+  function nextDialogueLine() {
+    if (dialogueQueue.length === 0) {
+      dialogueActive = false;
+      document.getElementById('gameDialogue').classList.remove('active');
+      return;
+    }
+    dialogueActive = true;
+    const line = dialogueQueue.shift();
+    document.getElementById('dialogueSpeaker').textContent = line.speaker;
+    document.getElementById('dialogueText').textContent = '';
+    document.getElementById('gameDialogue').classList.add('active');
+    typewriterText = line.text;
+    typewriterIdx = 0;
+    typewriterTimer = 0;
+  }
+
+  // ── Update ──
+
+  let moveTimer = 0;
+  const MOVE_DELAY = 8; // frames between moves
+
+  function update() {
+    tick++;
+
+    // Typewriter
+    if (dialogueActive && typewriterIdx < typewriterText.length) {
+      typewriterTimer++;
+      if (typewriterTimer % 2 === 0) {
+        typewriterIdx++;
+        document.getElementById('dialogueText').textContent = typewriterText.slice(0, typewriterIdx);
+      }
+    }
+
+    if (dialogueActive) return;
+
+    // Movement
+    moveTimer++;
+    if (moveTimer >= MOVE_DELAY) {
+      let dx = 0, dy = 0;
+      if (keys['ArrowLeft'] || keys['a'])  { dx = -1; player.dir = 1; }
+      else if (keys['ArrowRight'] || keys['d']) { dx = 1; player.dir = 2; }
+      else if (keys['ArrowUp'] || keys['w'])    { dy = -1; player.dir = 3; }
+      else if (keys['ArrowDown'] || keys['s'])  { dy = 1; player.dir = 0; }
+
+      if (dx !== 0 || dy !== 0) {
+        const nx = player.x + dx, ny = player.y + dy;
+        if (!isBlocked(nx, ny)) {
+          player.x = nx;
+          player.y = ny;
+          moveTimer = 0;
+        }
+        player.moving = true;
+      } else {
+        player.moving = false;
+      }
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    // Tiles
+    for (let y = 0; y < MAP_ROWS; y++) {
+      for (let x = 0; x < MAP_COLS; x++) {
+        drawTile(x, y);
+      }
+    }
+    // NPCs (behind player if above, in front if below)
+    const behind = npcs.filter(n => n.y <= player.y);
+    const front = npcs.filter(n => n.y > player.y);
+    behind.forEach(drawNPC);
+    drawPlayer();
+    front.forEach(drawNPC);
+  }
+
+  function gameLoop() {
+    if (!gameActive) return;
+    update();
+    draw();
+    animFrame = requestAnimationFrame(gameLoop);
+  }
+
+  function startGame() {
+    gameActive = true;
+    document.getElementById('gameContainer').classList.add('active');
+    player.x = 10; player.y = 8;
+    generateMap();
+    gameLoop();
+  }
+
+  function stopGame() {
+    gameActive = false;
+    if (animFrame) cancelAnimationFrame(animFrame);
+    document.getElementById('gameContainer').classList.remove('active');
+    document.getElementById('gameDialogue').classList.remove('active');
+    dialogueActive = false;
+    dialogueQueue = [];
+  }
+
+  // ── Input ──
+
+  document.addEventListener('keydown', function(e) {
+    if (!gameActive) return;
+    keys[e.key] = true;
+
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      if (dialogueActive) {
+        // If typewriter still going, finish it
+        if (typewriterIdx < typewriterText.length) {
+          typewriterIdx = typewriterText.length;
+          document.getElementById('dialogueText').textContent = typewriterText;
+        } else {
+          nextDialogueLine();
+        }
+      } else {
+        // Check for nearby NPC
+        for (const npc of npcs) {
+          const dist = Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y);
+          if (dist <= 2) {
+            // Face the NPC
+            if (npc.x < player.x) player.dir = 1;
+            else if (npc.x > player.x) player.dir = 2;
+            else if (npc.y < player.y) player.dir = 3;
+            else player.dir = 0;
+            showDialogue(npc);
+            break;
+          }
+        }
+      }
+    }
+  });
+
+  document.addEventListener('keyup', function(e) {
+    keys[e.key] = false;
+  });
+
+  // ── Buttons ──
+
+  document.getElementById('breakBtn').addEventListener('click', function() {
+    if (gameActive) { stopGame(); } else { startGame(); }
+  });
+  document.getElementById('closeGameBtn').addEventListener('click', stopGame);
+})();
 </script>
 </body>
 </html>
