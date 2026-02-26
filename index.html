@@ -556,6 +556,102 @@
   }
 
   .btn-break:hover { background: #c8e6c9; border-color: #81c784; }
+
+  /* Mobile D-pad */
+  .game-dpad {
+    display: none;
+    margin-top: 12px;
+    position: relative;
+    width: 160px;
+    height: 160px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .game-dpad button {
+    position: absolute;
+    width: 52px;
+    height: 52px;
+    border: 2px solid #555;
+    background: rgba(255,255,255,0.1);
+    color: #ccc;
+    font-size: 22px;
+    border-radius: 8px;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s;
+  }
+
+  .game-dpad button:active { background: rgba(255,255,255,0.25); }
+
+  .dpad-up { top: 0; left: 54px; }
+  .dpad-down { bottom: 0; left: 54px; }
+  .dpad-left { top: 54px; left: 0; }
+  .dpad-right { top: 54px; right: 0; }
+  .dpad-action {
+    top: 54px;
+    left: 54px;
+    font-size: 11px !important;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+  }
+
+  .game-hud {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  .game-hud .star-count { color: #ffd740; }
+  .game-hud .npc-count { color: #7ce87c; }
+
+  .game-toast {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.85);
+    border: 2px solid #ffd740;
+    border-radius: 10px;
+    padding: 16px 24px;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    text-align: center;
+    max-width: 320px;
+    z-index: 6;
+    animation: toastIn 0.3s ease;
+  }
+
+  .game-toast.active { display: block; }
+
+  .game-toast .toast-star { color: #ffd740; font-size: 20px; }
+
+  @keyframes toastIn {
+    from { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+    to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  }
+
+  @media (pointer: coarse) {
+    .game-dpad { display: block; }
+  }
+
+  @media (max-width: 680px) {
+    #gameCanvas { width: 100%; height: auto; }
+    .game-dpad { display: block; }
+  }
 </style>
 </head>
 <body>
@@ -583,11 +679,26 @@
   </div>
   <div class="game-canvas-wrapper">
     <canvas id="gameCanvas" width="640" height="400"></canvas>
+    <div class="game-hud">
+      <div><span class="star-count" id="hudStars">0</span> / <span id="hudStarsTotal">0</span> stars</div>
+      <div><span class="npc-count" id="hudNpcs">0</span> / <span id="hudNpcsTotal">0</span> conversations</div>
+    </div>
+    <div class="game-toast" id="gameToast">
+      <div class="toast-star">&#9733;</div>
+      <div id="toastText"></div>
+    </div>
     <div class="game-dialogue" id="gameDialogue">
       <div class="speaker" id="dialogueSpeaker"></div>
       <div id="dialogueText"></div>
-      <div class="prompt-hint">Press Space to continue <span>▼</span></div>
+      <div class="prompt-hint">Press Space to continue <span>&#9660;</span></div>
     </div>
+  </div>
+  <div class="game-dpad" id="gameDpad">
+    <button class="dpad-up" data-dir="up">&#9650;</button>
+    <button class="dpad-left" data-dir="left">&#9664;</button>
+    <button class="dpad-action" data-dir="action">TALK</button>
+    <button class="dpad-right" data-dir="right">&#9654;</button>
+    <button class="dpad-down" data-dir="down">&#9660;</button>
   </div>
 </div>
 
@@ -1231,15 +1342,19 @@ render();
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   const TILE = 32;
-  const COLS = W / TILE, ROWS = H / TILE; // 20x12.5
+
+  // Map dimensions (bigger world)
+  const MAP_COLS = 40, MAP_ROWS = 30;
 
   let gameActive = false;
   let animFrame = null;
+  let tick = 0;
+
+  // Camera
+  let camX = 0, camY = 0;
 
   // Player
-  const player = { x: 10, y: 8, dir: 0, moving: false, frame: 0, frameTimer: 0 };
-  // dir: 0=down, 1=left, 2=right, 3=up
-
+  const player = { x: 20, y: 15, dir: 0, moving: false };
   const keys = {};
 
   // Dialogue
@@ -1249,10 +1364,24 @@ render();
   let typewriterIdx = 0;
   let typewriterTimer = 0;
 
-  // NPCs
+  // Toast
+  let toastTimer = 0;
+
+  // Stars collected
+  let starsCollected = 0;
+  let npcstalked = 0;
+
+  // Fog overlay canvas
+  const fogCanvas = document.createElement('canvas');
+  fogCanvas.width = W;
+  fogCanvas.height = H;
+  const fogCtx = fogCanvas.getContext('2d');
+
+  // ── NPCs ──
+
   const npcs = [
     {
-      x: 5, y: 3, color: '#e06070', name: 'Sage',
+      x: 8, y: 5, color: '#e06070', name: 'Sage', talked: false,
       lines: [
         "Hey there! Take a deep breath.",
         "What's one small thing that brought you joy today?",
@@ -1260,15 +1389,15 @@ render();
       ]
     },
     {
-      x: 15, y: 2, color: '#6090e0', name: 'River',
+      x: 32, y: 5, color: '#6090e0', name: 'River', talked: false,
       lines: [
-        "You know what I think about?",
+        "The water here is so peaceful.",
         "If you could do anything tomorrow with no obligations, what would it be?",
         "That answer says a lot about what really matters to you."
       ]
     },
     {
-      x: 3, y: 8, color: '#e0a030', name: 'Ember',
+      x: 6, y: 22, color: '#e0a030', name: 'Ember', talked: false,
       lines: [
         "I've been thinking...",
         "When was the last time you lost track of time doing something you loved?",
@@ -1276,7 +1405,7 @@ render();
       ]
     },
     {
-      x: 17, y: 9, color: '#50b880', name: 'Fern',
+      x: 34, y: 23, color: '#50b880', name: 'Fern', talked: false,
       lines: [
         "Oh hi! Quick question.",
         "Who's someone that makes you feel like the best version of yourself?",
@@ -1284,58 +1413,120 @@ render();
       ]
     },
     {
-      x: 10, y: 1, color: '#b070d0', name: 'Luna',
+      x: 20, y: 4, color: '#b070d0', name: 'Luna', talked: false,
       lines: [
-        "The stars are nice here, even in daytime.",
+        "The view from up here is incredible.",
         "What would you want your life to look like in 5 years... not your career, your LIFE?",
         "Sometimes we optimize for the wrong things. Don't forget to optimize for happiness."
       ]
     },
     {
-      x: 8, y: 5, color: '#d09050', name: 'Oak',
+      x: 20, y: 25, color: '#d09050', name: 'Oak', talked: false,
       lines: [
-        "I like sitting by this tree.",
+        "I like sitting by this old tree.",
         "What's one thing you'd never want to give up, no matter how good the offer?",
         "That's your non-negotiable. Protect it fiercely."
       ]
     },
   ];
 
-  // Map tiles: 0=grass, 1=dark grass, 2=path, 3=water, 4=tree, 5=flowers, 6=rock
-  const MAP_ROWS = Math.ceil(H / TILE);
-  const MAP_COLS = Math.ceil(W / TILE);
+  // ── Stars (collectibles) ──
+
+  const starPrompts = [
+    "Name one thing you're grateful for right now.",
+    "What made you smile this week?",
+    "Think of someone who believes in you.",
+    "What's a place that makes you feel at peace?",
+    "What's a skill you're proud of having?",
+    "Name a moment that made you laugh recently.",
+    "What's something beautiful you noticed today?",
+    "Think of a time you overcame something hard.",
+    "What's a simple pleasure you never get tired of?",
+    "Who would you call if you had great news?",
+    "What's something you're looking forward to?",
+    "Name a quality about yourself that you like.",
+    "What song always lifts your mood?",
+    "What's a memory that always makes you feel warm?",
+    "What would you do with a free afternoon?",
+  ];
+
+  const stars = [];
+
+  function placeStars() {
+    stars.length = 0;
+    const positions = [
+      [5,10],[12,3],[25,7],[35,10],[15,18],[30,18],
+      [8,26],[18,22],[28,26],[37,15],[10,14],[22,10],
+      [33,3],[14,27],[26,20]
+    ];
+    positions.forEach((pos, i) => {
+      stars.push({ x: pos[0], y: pos[1], collected: false, prompt: starPrompts[i] });
+    });
+  }
+
+  // ── Map ──
+
   const map = [];
 
+  function getBiome(x, y) {
+    // Center is meadow/paths, corners are biomes
+    const cx = MAP_COLS / 2, cy = MAP_ROWS / 2;
+    const dx = x - cx, dy = y - cy;
+    if (Math.abs(dx) < 5 && Math.abs(dy) < 4) return 'meadow';
+    if (x < 14 && y < 12) return 'forest';
+    if (x > 26 && y < 12) return 'lake';
+    if (x < 14 && y > 18) return 'garden';
+    if (x > 26 && y > 18) return 'mountain';
+    return 'meadow';
+  }
+
   function generateMap() {
-    // Fill with grass
+    const seeded = (x, y, m) => ((x * 7 + y * 13 + m) * 2654435761 >>> 0) % 100;
+
     for (let y = 0; y < MAP_ROWS; y++) {
       map[y] = [];
       for (let x = 0; x < MAP_COLS; x++) {
-        map[y][x] = Math.random() < 0.35 ? 1 : 0; // grass mix
+        const biome = getBiome(x, y);
+        const s = seeded(x, y, 1);
+
+        // Borders are always trees
+        if (x === 0 || y === 0 || x === MAP_COLS - 1 || y === MAP_ROWS - 1) {
+          map[y][x] = 4; continue;
+        }
+
+        // Paths: cross through center
+        if ((x === 19 || x === 20) && y > 0 && y < MAP_ROWS - 1) { map[y][x] = 2; continue; }
+        if ((y === 14 || y === 15) && x > 0 && x < MAP_COLS - 1) { map[y][x] = 2; continue; }
+
+        if (biome === 'forest') {
+          map[y][x] = s < 35 ? 4 : s < 45 ? 1 : 0;
+        } else if (biome === 'lake') {
+          if (x > 28 && x < 37 && y > 3 && y < 10) map[y][x] = 3;
+          else if (s < 10 && x > 27) map[y][x] = 3;
+          else map[y][x] = s < 8 ? 5 : s < 15 ? 1 : 0;
+        } else if (biome === 'garden') {
+          map[y][x] = s < 30 ? 5 : s < 38 ? 1 : 0;
+        } else if (biome === 'mountain') {
+          map[y][x] = s < 25 ? 6 : s < 40 ? 4 : s < 55 ? 1 : 0;
+        } else {
+          map[y][x] = s < 10 ? 1 : s < 14 ? 5 : s < 18 ? 4 : 0;
+        }
       }
     }
-    // Paths (horizontal and vertical cross)
-    for (let x = 0; x < MAP_COLS; x++) { map[6][x] = 2; map[7][x] = 2; }
-    for (let y = 0; y < MAP_ROWS; y++) { map[y][10] = 2; map[y][11] = 2; }
 
-    // Water pond
-    for (let y = 4; y <= 5; y++) for (let x = 13; x <= 15; x++) map[y][x] = 3;
-    map[3][14] = 3; map[6][14] = 2; // path stays
-
-    // Trees along edges
-    for (let x = 0; x < MAP_COLS; x++) { if (map[0][x] !== 2 && map[0][x] !== 3) map[0][x] = 4; }
-    for (let y = 0; y < MAP_ROWS; y++) { if (map[y][0] !== 2) map[y][0] = 4; if (map[y][MAP_COLS-1] !== 2) map[y][MAP_COLS-1] = 4; }
-    if (MAP_ROWS > 12) for (let x = 0; x < MAP_COLS; x++) { if (map[12][x] !== 2) map[12][x] = 4; }
-
-    // Scatter some trees and flowers
-    const decorations = [[2,4,4],[4,9,4],[7,17,4],[9,3,5],[2,8,5],[5,18,5],[8,14,5],[10,6,5],[3,1,6],[9,19,6],[11,12,5]];
-    for (const [dy, dx, t] of decorations) {
-      if (dy < MAP_ROWS && dx < MAP_COLS && map[dy][dx] < 2) map[dy][dx] = t;
-    }
-
-    // Make sure NPC and player positions are walkable
-    for (const npc of npcs) { if (npc.y < MAP_ROWS && npc.x < MAP_COLS) map[npc.y][npc.x] = 0; }
+    // Ensure NPC, player, and star positions are walkable
+    for (const npc of npcs) map[npc.y][npc.x] = 0;
+    for (const star of stars) map[star.y][star.x] = s_walkable(star.x, star.y) ? map[star.y][star.x] : 0;
     map[player.y][player.x] = 2;
+
+    function s_walkable(x, y) {
+      const t = map[y]?.[x];
+      return t !== undefined && t !== 3 && t !== 4 && t !== 6;
+    }
+    // Fix star tiles
+    for (const star of stars) {
+      if (!s_walkable(star.x, star.y)) map[star.y][star.x] = 0;
+    }
   }
 
   function isBlocked(x, y) {
@@ -1353,35 +1544,32 @@ render();
     darkGrass: ['#3d7a2e','#357026'],
     path:      ['#c8b478','#baa868'],
     water:     ['#3088c0','#2878b0'],
-    tree:      '#2d5a1e',
     treeTrunk: '#6b4226',
     flower:    ['#e85080','#e0d040','#60a0e0','#e08030'],
     rock:      '#888',
   };
 
-  let tick = 0;
-
   function drawTile(x, y) {
-    const px = x * TILE, py = y * TILE;
+    const px = x * TILE - camX, py = y * TILE - camY;
+    // Skip if off-screen
+    if (px < -TILE || py < -TILE || px > W || py > H) return;
+
     const t = map[y][x];
     const checker = (x + y) % 2;
 
     if (t <= 1) {
       ctx.fillStyle = t === 0 ? COLORS.grass[checker] : COLORS.darkGrass[checker];
       ctx.fillRect(px, py, TILE, TILE);
-      // Grass blades
       if ((x * 7 + y * 13) % 5 === 0) {
         ctx.strokeStyle = '#5a9c48';
         ctx.lineWidth = 1;
-        const bx = px + (x * 3 % 20) + 6;
-        const by = py + (y * 7 % 20) + 8;
+        const bx = px + (x * 3 % 20) + 6, by = py + (y * 7 % 20) + 8;
         ctx.beginPath(); ctx.moveTo(bx, by + 8); ctx.lineTo(bx - 2, by); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(bx + 4, by + 8); ctx.lineTo(bx + 6, by + 2); ctx.stroke();
       }
     } else if (t === 2) {
       ctx.fillStyle = COLORS.path[checker];
       ctx.fillRect(px, py, TILE, TILE);
-      // Path texture dots
       if ((x * 11 + y * 7) % 4 === 0) {
         ctx.fillStyle = '#b09858';
         ctx.fillRect(px + 8, py + 12, 2, 2);
@@ -1390,91 +1578,92 @@ render();
     } else if (t === 3) {
       ctx.fillStyle = COLORS.water[(tick + x + y) % 2 === 0 ? 0 : 1];
       ctx.fillRect(px, py, TILE, TILE);
-      // Sparkle
-      const sparkleX = (tick * 3 + x * 17) % 28 + px;
-      const sparkleY = (tick * 5 + y * 11) % 24 + py;
+      const sx = (tick * 3 + x * 17) % 28 + px, sy = (tick * 5 + y * 11) % 24 + py;
       ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      ctx.fillRect(sparkleX, sparkleY, 3, 2);
+      ctx.fillRect(sx, sy, 3, 2);
     } else if (t === 4) {
-      // Ground
       ctx.fillStyle = COLORS.grass[checker];
       ctx.fillRect(px, py, TILE, TILE);
-      // Trunk
       ctx.fillStyle = COLORS.treeTrunk;
       ctx.fillRect(px + 12, py + 18, 8, 14);
-      // Canopy
       ctx.fillStyle = '#2d6b1e';
-      ctx.beginPath();
-      ctx.arc(px + 16, py + 14, 13, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 16, py + 14, 13, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#3a8828';
-      ctx.beginPath();
-      ctx.arc(px + 14, py + 11, 9, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 14, py + 11, 9, 0, Math.PI * 2); ctx.fill();
     } else if (t === 5) {
       ctx.fillStyle = COLORS.grass[checker];
       ctx.fillRect(px, py, TILE, TILE);
-      // Flowers
       const fc = COLORS.flower[(x * 3 + y * 7) % 4];
       const sway = Math.sin(tick * 0.1 + x + y) * 1.5;
       ctx.fillStyle = '#4a8c38';
       ctx.fillRect(px + 14, py + 14, 2, 12);
       ctx.fillStyle = fc;
-      ctx.beginPath();
-      ctx.arc(px + 15 + sway, py + 12, 5, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 15 + sway, py + 12, 5, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.arc(px + 15 + sway, py + 12, 2, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 15 + sway, py + 12, 2, 0, Math.PI * 2); ctx.fill();
     } else if (t === 6) {
       ctx.fillStyle = COLORS.grass[checker];
       ctx.fillRect(px, py, TILE, TILE);
       ctx.fillStyle = COLORS.rock;
-      ctx.beginPath();
-      ctx.ellipse(px + 16, py + 20, 12, 8, 0, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.ellipse(px + 16, py + 20, 12, 8, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#999';
-      ctx.beginPath();
-      ctx.ellipse(px + 14, py + 17, 8, 5, -0.3, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.ellipse(px + 14, py + 17, 8, 5, -0.3, 0, Math.PI * 2); ctx.fill();
     }
   }
 
+  function drawStar(star) {
+    if (star.collected) return;
+    const px = star.x * TILE - camX + 16, py = star.y * TILE - camY + 16;
+    if (px < -20 || py < -20 || px > W + 20 || py > H + 20) return;
+    const pulse = Math.sin(tick * 0.08 + star.x) * 3 + 10;
+    const glow = Math.sin(tick * 0.06 + star.y) * 0.3 + 0.5;
+    // Glow
+    ctx.fillStyle = `rgba(255, 215, 64, ${glow * 0.3})`;
+    ctx.beginPath(); ctx.arc(px, py, pulse + 4, 0, Math.PI * 2); ctx.fill();
+    // Star shape
+    ctx.fillStyle = '#ffd740';
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(tick * 0.02);
+    drawStarShape(ctx, 0, 0, 5, pulse * 0.6, pulse * 0.3);
+    ctx.restore();
+  }
+
+  function drawStarShape(c, cx, cy, spikes, outerR, innerR) {
+    let rot = Math.PI / 2 * 3;
+    const step = Math.PI / spikes;
+    c.beginPath();
+    c.moveTo(cx, cy - outerR);
+    for (let i = 0; i < spikes; i++) {
+      c.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+      rot += step;
+      c.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
+      rot += step;
+    }
+    c.closePath();
+    c.fill();
+  }
+
   function drawSprite(x, y, dir, frame, color) {
-    const px = x * TILE, py = y * TILE;
+    const px = x * TILE - camX, py = y * TILE - camY;
+    if (px < -TILE * 2 || py < -TILE * 2 || px > W + TILE || py > H + TILE) return;
     const bounce = Math.sin(frame * 0.5) * 1.5;
 
-    // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.beginPath();
-    ctx.ellipse(px + 16, py + 30, 10, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.ellipse(px + 16, py + 30, 10, 4, 0, 0, Math.PI * 2); ctx.fill();
 
-    // Body
     ctx.fillStyle = color;
     ctx.fillRect(px + 8, py + 12 + bounce, 16, 14);
 
-    // Head
     ctx.fillStyle = '#fdd';
-    ctx.beginPath();
-    ctx.arc(px + 16, py + 10 + bounce, 9, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(px + 16, py + 10 + bounce, 9, 0, Math.PI * 2); ctx.fill();
 
-    // Eyes
     ctx.fillStyle = '#333';
-    if (dir === 3) {
-      // facing up, no eyes visible
-    } else if (dir === 1) {
-      ctx.fillRect(px + 11, py + 8 + bounce, 3, 3);
-    } else if (dir === 2) {
-      ctx.fillRect(px + 18, py + 8 + bounce, 3, 3);
-    } else {
-      ctx.fillRect(px + 12, py + 8 + bounce, 3, 3);
-      ctx.fillRect(px + 18, py + 8 + bounce, 3, 3);
-    }
+    if (dir === 3) { /* up */ }
+    else if (dir === 1) { ctx.fillRect(px + 11, py + 8 + bounce, 3, 3); }
+    else if (dir === 2) { ctx.fillRect(px + 18, py + 8 + bounce, 3, 3); }
+    else { ctx.fillRect(px + 12, py + 8 + bounce, 3, 3); ctx.fillRect(px + 18, py + 8 + bounce, 3, 3); }
 
-    // Feet
     ctx.fillStyle = '#555';
     const step = Math.sin(frame * 0.6) * 3;
     ctx.fillRect(px + 9 + step, py + 26 + bounce, 6, 4);
@@ -1483,24 +1672,30 @@ render();
 
   function drawNPC(npc) {
     drawSprite(npc.x, npc.y, 0, tick * 0.02, npc.color);
+    const px = npc.x * TILE - camX, py = npc.y * TILE - camY;
+    if (px < -TILE || px > W + TILE) return;
+
     // Name tag
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
     const tw = ctx.measureText(npc.name).width;
-    ctx.fillRect(npc.x * TILE + 16 - tw/2 - 3, npc.y * TILE - 2, tw + 6, 14);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(npc.name, npc.x * TILE + 16, npc.y * TILE + 8);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(px + 16 - tw / 2 - 3, py - 2, tw + 6, 14);
+    ctx.fillStyle = npc.talked ? '#7ce87c' : '#fff';
+    ctx.fillText(npc.name, px + 16, py + 8);
+    if (npc.talked) {
+      ctx.fillText('✓', px + 16 + tw / 2 + 6, py + 8);
+    }
     ctx.textAlign = 'left';
 
-    // Interaction indicator
+    // Exclamation mark
     const dist = Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y);
     if (dist <= 2 && !dialogueActive) {
       const bob = Math.sin(tick * 0.08) * 3;
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = npc.talked ? '#7ce87c' : '#ffd740';
+      ctx.font = 'bold 16px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('!', npc.x * TILE + 16, npc.y * TILE - 6 + bob);
+      ctx.fillText(npc.talked ? '...' : '!', px + 16, py - 8 + bob);
       ctx.textAlign = 'left';
     }
   }
@@ -1509,9 +1704,60 @@ render();
     drawSprite(player.x, player.y, player.dir, player.moving ? tick * 0.15 : 0, '#4488cc');
   }
 
+  // ── Fog of Color (world comes alive) ──
+
+  function drawFog() {
+    const talkedCount = npcs.filter(n => n.talked).length;
+    if (talkedCount >= npcs.length) return; // full color, no fog
+
+    fogCtx.clearRect(0, 0, W, H);
+
+    // Dark desaturating overlay
+    const fogAlpha = 0.55 - (talkedCount * 0.05);
+    fogCtx.fillStyle = `rgba(20, 20, 40, ${Math.max(0.1, fogAlpha)})`;
+    fogCtx.fillRect(0, 0, W, H);
+
+    // Punch bright holes around talked NPCs
+    fogCtx.globalCompositeOperation = 'destination-out';
+
+    // Player always has a small bright area
+    const psx = player.x * TILE - camX + 16;
+    const psy = player.y * TILE - camY + 16;
+    const pGrad = fogCtx.createRadialGradient(psx, psy, 0, psx, psy, 100);
+    pGrad.addColorStop(0, 'rgba(0,0,0,1)');
+    pGrad.addColorStop(0.5, 'rgba(0,0,0,0.6)');
+    pGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    fogCtx.fillStyle = pGrad;
+    fogCtx.beginPath(); fogCtx.arc(psx, psy, 100, 0, Math.PI * 2); fogCtx.fill();
+
+    // Each talked NPC blooms color
+    for (const npc of npcs) {
+      if (!npc.talked) continue;
+      const nx = npc.x * TILE - camX + 16;
+      const ny = npc.y * TILE - camY + 16;
+      const radius = 200;
+      const grad = fogCtx.createRadialGradient(nx, ny, 0, nx, ny, radius);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');
+      grad.addColorStop(0.6, 'rgba(0,0,0,0.8)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      fogCtx.fillStyle = grad;
+      fogCtx.beginPath(); fogCtx.arc(nx, ny, radius, 0, Math.PI * 2); fogCtx.fill();
+    }
+
+    fogCtx.globalCompositeOperation = 'source-over';
+
+    // Draw fog on main canvas
+    ctx.drawImage(fogCanvas, 0, 0);
+  }
+
   // ── Dialogue ──
 
   function showDialogue(npc) {
+    if (!npc.talked) {
+      npc.talked = true;
+      npcstalked++;
+      updateHUD();
+    }
     dialogueQueue = npc.lines.map(line => ({ speaker: npc.name, text: line }));
     nextDialogueLine();
   }
@@ -1532,13 +1778,64 @@ render();
     typewriterTimer = 0;
   }
 
+  // ── Toast (star pickup) ──
+
+  function showToast(text) {
+    document.getElementById('toastText').textContent = text;
+    document.getElementById('gameToast').classList.add('active');
+    toastTimer = 180; // ~3 seconds at 60fps
+  }
+
+  function hideToast() {
+    document.getElementById('gameToast').classList.remove('active');
+  }
+
+  // ── HUD ──
+
+  function updateHUD() {
+    document.getElementById('hudStars').textContent = starsCollected;
+    document.getElementById('hudStarsTotal').textContent = stars.length;
+    document.getElementById('hudNpcs').textContent = npcstalked;
+    document.getElementById('hudNpcsTotal').textContent = npcs.length;
+  }
+
+  // ── Camera ──
+
+  function updateCamera() {
+    const targetX = player.x * TILE + TILE / 2 - W / 2;
+    const targetY = player.y * TILE + TILE / 2 - H / 2;
+    // Smooth follow
+    camX += (targetX - camX) * 0.15;
+    camY += (targetY - camY) * 0.15;
+    // Clamp
+    camX = Math.max(0, Math.min(MAP_COLS * TILE - W, camX));
+    camY = Math.max(0, Math.min(MAP_ROWS * TILE - H, camY));
+  }
+
   // ── Update ──
 
   let moveTimer = 0;
-  const MOVE_DELAY = 8; // frames between moves
+  const MOVE_DELAY = 7;
+
+  function checkStarPickup() {
+    for (const star of stars) {
+      if (!star.collected && star.x === player.x && star.y === player.y) {
+        star.collected = true;
+        starsCollected++;
+        updateHUD();
+        showToast(star.prompt);
+      }
+    }
+  }
 
   function update() {
     tick++;
+
+    // Toast timer
+    if (toastTimer > 0) {
+      toastTimer--;
+      if (toastTimer === 0) hideToast();
+    }
 
     // Typewriter
     if (dialogueActive && typewriterIdx < typewriterText.length) {
@@ -1566,28 +1863,51 @@ render();
           player.x = nx;
           player.y = ny;
           moveTimer = 0;
+          checkStarPickup();
         }
         player.moving = true;
       } else {
         player.moving = false;
       }
     }
+
+    updateCamera();
   }
+
+  // ── Draw ──
 
   function draw() {
     ctx.clearRect(0, 0, W, H);
+    // Background fill
+    ctx.fillStyle = '#2d5a27';
+    ctx.fillRect(0, 0, W, H);
+
+    // Visible tile range
+    const startCol = Math.max(0, Math.floor(camX / TILE));
+    const endCol = Math.min(MAP_COLS - 1, Math.ceil((camX + W) / TILE));
+    const startRow = Math.max(0, Math.floor(camY / TILE));
+    const endRow = Math.min(MAP_ROWS - 1, Math.ceil((camY + H) / TILE));
+
     // Tiles
-    for (let y = 0; y < MAP_ROWS; y++) {
-      for (let x = 0; x < MAP_COLS; x++) {
+    for (let y = startRow; y <= endRow; y++) {
+      for (let x = startCol; x <= endCol; x++) {
         drawTile(x, y);
       }
     }
-    // NPCs (behind player if above, in front if below)
-    const behind = npcs.filter(n => n.y <= player.y);
-    const front = npcs.filter(n => n.y > player.y);
-    behind.forEach(drawNPC);
-    drawPlayer();
-    front.forEach(drawNPC);
+
+    // Stars
+    for (const star of stars) drawStar(star);
+
+    // NPCs and player sorted by Y for depth
+    const entities = [...npcs.map(n => ({type:'npc', y: n.y, data: n})), {type:'player', y: player.y}];
+    entities.sort((a, b) => a.y - b.y);
+    for (const e of entities) {
+      if (e.type === 'player') drawPlayer();
+      else drawNPC(e.data);
+    }
+
+    // Fog overlay (world comes alive)
+    drawFog();
   }
 
   function gameLoop() {
@@ -1597,11 +1917,19 @@ render();
     animFrame = requestAnimationFrame(gameLoop);
   }
 
+  // ── Start / Stop ──
+
   function startGame() {
     gameActive = true;
     document.getElementById('gameContainer').classList.add('active');
-    player.x = 10; player.y = 8;
+    player.x = 20; player.y = 15;
+    starsCollected = 0; npcstalked = 0;
+    for (const n of npcs) n.talked = false;
+    placeStars();
     generateMap();
+    camX = player.x * TILE - W / 2;
+    camY = player.y * TILE - H / 2;
+    updateHUD();
     gameLoop();
   }
 
@@ -1610,11 +1938,40 @@ render();
     if (animFrame) cancelAnimationFrame(animFrame);
     document.getElementById('gameContainer').classList.remove('active');
     document.getElementById('gameDialogue').classList.remove('active');
+    hideToast();
     dialogueActive = false;
     dialogueQueue = [];
   }
 
-  // ── Input ──
+  // ── Handle action (space/talk) ──
+
+  function handleAction() {
+    if (dialogueActive) {
+      if (typewriterIdx < typewriterText.length) {
+        typewriterIdx = typewriterText.length;
+        document.getElementById('dialogueText').textContent = typewriterText;
+      } else {
+        nextDialogueLine();
+      }
+    } else if (toastTimer > 0) {
+      toastTimer = 0;
+      hideToast();
+    } else {
+      for (const npc of npcs) {
+        const dist = Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y);
+        if (dist <= 2) {
+          if (npc.x < player.x) player.dir = 1;
+          else if (npc.x > player.x) player.dir = 2;
+          else if (npc.y < player.y) player.dir = 3;
+          else player.dir = 0;
+          showDialogue(npc);
+          break;
+        }
+      }
+    }
+  }
+
+  // ── Keyboard Input ──
 
   document.addEventListener('keydown', function(e) {
     if (!gameActive) return;
@@ -1622,32 +1979,9 @@ render();
       e.preventDefault();
     }
     keys[e.key] = true;
-
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
-      if (dialogueActive) {
-        // If typewriter still going, finish it
-        if (typewriterIdx < typewriterText.length) {
-          typewriterIdx = typewriterText.length;
-          document.getElementById('dialogueText').textContent = typewriterText;
-        } else {
-          nextDialogueLine();
-        }
-      } else {
-        // Check for nearby NPC
-        for (const npc of npcs) {
-          const dist = Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y);
-          if (dist <= 2) {
-            // Face the NPC
-            if (npc.x < player.x) player.dir = 1;
-            else if (npc.x > player.x) player.dir = 2;
-            else if (npc.y < player.y) player.dir = 3;
-            else player.dir = 0;
-            showDialogue(npc);
-            break;
-          }
-        }
-      }
+      handleAction();
     }
   });
 
@@ -1655,10 +1989,45 @@ render();
     keys[e.key] = false;
   });
 
+  // ── Mobile D-pad ──
+
+  const dpad = document.getElementById('gameDpad');
+  const dirMap = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+  let touchIntervals = {};
+
+  dpad.addEventListener('pointerdown', function(e) {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    e.preventDefault();
+    const dir = btn.dataset.dir;
+    if (dir === 'action') {
+      handleAction();
+      return;
+    }
+    const key = dirMap[dir];
+    if (!key) return;
+    keys[key] = true;
+    // Repeat while held
+    touchIntervals[dir] = setInterval(() => { keys[key] = true; }, 50);
+  });
+
+  function stopTouch(e) {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const dir = btn.dataset.dir;
+    const key = dirMap[dir];
+    if (key) keys[key] = false;
+    if (touchIntervals[dir]) { clearInterval(touchIntervals[dir]); delete touchIntervals[dir]; }
+  }
+
+  dpad.addEventListener('pointerup', stopTouch);
+  dpad.addEventListener('pointerleave', stopTouch);
+  dpad.addEventListener('pointercancel', stopTouch);
+
   // ── Buttons ──
 
   document.getElementById('breakBtn').addEventListener('click', function() {
-    if (gameActive) { stopGame(); } else { startGame(); }
+    if (gameActive) stopGame(); else startGame();
   });
   document.getElementById('closeGameBtn').addEventListener('click', stopGame);
 })();
