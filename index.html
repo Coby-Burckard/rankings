@@ -1618,6 +1618,9 @@ render();
 
   document.addEventListener('keydown', function(e) {
     if (!gameActive) return;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) {
+      e.preventDefault();
+    }
     keys[e.key] = true;
 
     if (e.key === ' ' || e.key === 'Enter') {
