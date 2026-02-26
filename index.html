@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Comparison Tool</title>
+<style>
+  :root {
+    --color-bg: #f5f5f5;
+    --color-surface: #ffffff;
+    --color-text: #212121;
+    --color-text-secondary: #757575;
+    --color-border: #e0e0e0;
+    --color-accent: #1976d2;
+    --color-accent-light: #e3f2fd;
+    --color-gold: #f9a825;
+    --color-silver: #90a4ae;
+    --color-bronze: #ff8a65;
+    --group-compensation: #e8f5e9;
+    --group-career: #e3f2fd;
+    --group-worklife: #fff8e1;
+    --group-location: #e0f2f1;
+    --group-partner: #f3e5f5;
+    --sticky-z: 10;
+    --header-z: 20;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text);
+    line-height: 1.5;
+  }
+
+  /* Header */
+  .header {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: var(--header-z);
+  }
+
+  .header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-right: auto;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    padding: 6px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { background: #f0f0f0; border-color: #bbb; }
+
+  .btn-primary {
+    background: var(--color-accent);
+    color: white;
+    border-color: var(--color-accent);
+  }
+
+  .btn-primary:hover { background: #1565c0; }
+
+  .btn-danger { color: #d32f2f; }
+  .btn-danger:hover { background: #ffebee; border-color: #d32f2f; }
+
+  .partner-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .partner-toggle input { cursor: pointer; }
+
+  /* Summary Bar */
+  .summary-bar {
+    padding: 16px 24px;
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    background: var(--color-bg);
+  }
+
+  .summary-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 14px 20px;
+    min-width: 180px;
+    flex-shrink: 0;
+    position: relative;
+    transition: box-shadow 0.2s;
+  }
+
+  .summary-card.rank-1 { border-color: var(--color-gold); box-shadow: 0 0 0 1px var(--color-gold); }
+  .summary-card.rank-2 { border-color: var(--color-silver); }
+  .summary-card.rank-3 { border-color: var(--color-bronze); }
+
+  .rank-badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: white;
+  }
+
+  .rank-1 .rank-badge { background: var(--color-gold); }
+  .rank-2 .rank-badge { background: var(--color-silver); }
+  .rank-3 .rank-badge { background: var(--color-bronze); }
+
+  .summary-name {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+  }
+
+  .summary-score {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--color-accent);
+  }
+
+  .summary-completeness {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+  }
+
+  /* Empty State */
+  .empty-state {
+    text-align: center;
+    padding: 80px 24px;
+    color: var(--color-text-secondary);
+  }
+
+  .empty-state h2 { font-size: 22px; margin-bottom: 8px; color: var(--color-text); }
+  .empty-state p { margin-bottom: 20px; font-size: 15px; }
+
+  /* Grid Container */
+  .grid-wrapper {
+    overflow-x: auto;
+    padding: 0 24px 40px;
+  }
+
+  .grid {
+    border-collapse: collapse;
+    width: max-content;
+    min-width: 100%;
+    background: var(--color-surface);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+  }
+
+  .grid th, .grid td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+
+  .grid th {
+    font-weight: 600;
+    background: var(--color-surface);
+  }
+
+  /* Sticky columns */
+  .col-category {
+    position: sticky;
+    left: 0;
+    z-index: var(--sticky-z);
+    background: var(--color-surface);
+    min-width: 220px;
+    max-width: 220px;
+  }
+
+  .col-weight {
+    position: sticky;
+    left: 220px;
+    z-index: var(--sticky-z);
+    background: var(--color-surface);
+    min-width: 80px;
+    width: 80px;
+    text-align: center;
+  }
+
+  .col-job {
+    min-width: 150px;
+    width: 150px;
+    text-align: center;
+  }
+
+  /* Group header row */
+  .group-header td {
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 10px 12px 6px;
+    border-bottom: 2px solid var(--color-border);
+  }
+
+  .group-header .col-category { display: flex; align-items: center; gap: 6px; }
+
+  /* Category name */
+  .cat-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .cat-name .info-icon {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #e0e0e0;
+    color: #757575;
+    font-size: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: help;
+    flex-shrink: 0;
+  }
+
+  /* Weight dots */
+  .weight-dots {
+    display: inline-flex;
+    gap: 3px;
+    cursor: pointer;
+  }
+
+  .weight-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid #999;
+    background: transparent;
+    transition: background 0.1s, border-color 0.1s;
+  }
+
+  .weight-dot.filled {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+
+  .weight-dots:hover .weight-dot { border-color: var(--color-accent); }
+
+  /* Score input */
+  .score-cell {
+    position: relative;
+  }
+
+  .score-input {
+    width: 56px;
+    padding: 4px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: 14px;
+    text-align: center;
+    font-weight: 600;
+    background: transparent;
+    transition: border-color 0.15s;
+  }
+
+  .score-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px var(--color-accent-light);
+  }
+
+  .score-input::placeholder {
+    color: #ccc;
+    font-weight: 400;
+  }
+
+  /* Score cell coloring */
+  .score-cell.best-in-row { border-left: 3px solid #4caf50; }
+  .score-cell.worst-in-row { border-left: 3px solid #ef5350; }
+
+  /* Job column header */
+  .job-header {
+    padding: 8px 12px;
+    text-align: center;
+  }
+
+  .job-name-input {
+    width: 120px;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+    background: transparent;
+    transition: border-color 0.15s;
+  }
+
+  .job-name-input:hover { border-color: var(--color-border); }
+  .job-name-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    background: white;
+  }
+
+  .job-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  .btn-icon {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .btn-icon:hover { background: #f0f0f0; color: var(--color-text); }
+  .btn-icon.danger:hover { background: #ffebee; color: #d32f2f; }
+
+  /* Notes */
+  .notes-row td { padding: 0 12px 8px; border-bottom: 2px solid var(--color-border); }
+
+  .notes-textarea {
+    width: 130px;
+    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 48px;
+    max-height: 120px;
+  }
+
+  .notes-textarea:focus {
+    outline: none;
+    border-color: var(--color-accent);
+  }
+
+  /* Subtotal row */
+  .subtotal-row td {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    border-bottom: 2px solid var(--color-border);
+    padding: 6px 12px;
+  }
+
+  .subtotal-score { font-weight: 700; color: var(--color-text); }
+
+  /* Total row */
+  .total-row td {
+    font-weight: 700;
+    font-size: 15px;
+    padding: 12px;
+    border-top: 2px solid var(--color-text);
+    border-bottom: none;
+  }
+
+  .total-score {
+    font-size: 18px;
+    color: var(--color-accent);
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .header { padding: 10px 12px; gap: 10px; }
+    .header h1 { font-size: 16px; }
+    .summary-bar { padding: 12px; }
+    .grid-wrapper { padding: 0 12px 24px; }
+    .col-category { min-width: 160px; max-width: 160px; }
+    .col-weight { left: 160px; min-width: 60px; width: 60px; }
+    .col-job { min-width: 130px; }
+    .job-name-input { width: 100px; }
+    .score-input { width: 48px; }
+  }
+
+  /* Add category row */
+  .add-category-btn {
+    font-size: 12px;
+    color: var(--color-accent);
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 4px 0;
+  }
+
+  .add-category-btn:hover { text-decoration: underline; }
+
+  /* Tooltip */
+  [data-tooltip] {
+    position: relative;
+  }
+
+  [data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+  }
+
+  /* Hidden file input */
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Job Comparison Tool</h1>
+  <div class="header-actions">
+    <label class="partner-toggle">
+      <input type="checkbox" id="partnerToggle" checked>
+      Partner Categories
+    </label>
+    <button class="btn btn-primary" id="addJobBtn">+ Add Job</button>
+    <button class="btn" id="exportBtn">Export</button>
+    <button class="btn" id="importBtn">Import</button>
+    <button class="btn btn-danger" id="resetBtn">Reset All</button>
+    <input type="file" id="importFile" accept=".json" class="hidden">
+  </div>
+</div>
+
+<div class="summary-bar" id="summaryBar"></div>
+
+<div id="mainContent"></div>
+
+<script>
+// ── Default State ────────────────────────────────────────────
+
+function getDefaultState() {
+  return {
+    version: 1,
+    partnerMode: true,
+    showNotes: true,
+    groups: [
+      {
+        id: 'compensation', name: 'Compensation & Financial', color: 'var(--group-compensation)', isPartner: false,
+        categories: [
+          { id: 'base_salary', name: 'Base Salary', description: 'Annual base compensation', weight: 5, defaultWeight: 5, isCustom: false, hidden: false },
+          { id: 'equity', name: 'Equity / Stock', description: 'RSUs, options, equity upside', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'bonus', name: 'Bonus Potential', description: 'Annual bonus, signing bonus', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'benefits', name: 'Benefits', description: 'Health, dental, vision insurance quality & cost', weight: 4, defaultWeight: 4, isCustom: false, hidden: false },
+          { id: 'retirement', name: 'Retirement / 401k', description: 'Employer match, vesting schedule', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'col', name: 'Cost of Living', description: 'How far your salary goes in that location', weight: 4, defaultWeight: 4, isCustom: false, hidden: false },
+        ]
+      },
+      {
+        id: 'career', name: 'Career & Growth', color: 'var(--group-career)', isPartner: false,
+        categories: [
+          { id: 'growth', name: 'Growth Trajectory', description: 'Promotion path, title progression', weight: 4, defaultWeight: 4, isCustom: false, hidden: false },
+          { id: 'learning', name: 'Learning & Development', description: 'Mentorship, training budget, skill growth', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'institution', name: 'Institutional Support', description: 'Research infrastructure, grant support, lab space, funding culture', weight: 4, defaultWeight: 4, isCustom: false, hidden: false },
+          { id: 'patient_pop', name: 'Patient Population Access', description: 'Pediatric patient volume and diversity for research recruitment', weight: 4, defaultWeight: 4, isCustom: false, hidden: false },
+          { id: 'physician_collab', name: 'Physician Collaborators', description: 'Pediatricians, child psychiatrists, and other MDs available to collaborate with', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'faculty', name: 'Research Faculty & Mentors', description: 'Strength of psych department, senior researchers, mentorship opportunities', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'reputation', name: 'Institution Reputation', description: 'Academic prestige, research output, industry standing', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'stability', name: 'Organization Stability', description: 'Financial health, layoff risk, funding outlook', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'team', name: 'Team & Manager', description: 'Quality of team, manager/PI impression from interviews', weight: 4, defaultWeight: 4, isCustom: false, hidden: false },
+          { id: 'role_fit', name: 'Role Alignment', description: 'How well the work matches your research interests', weight: 4, defaultWeight: 4, isCustom: false, hidden: false },
+        ]
+      },
+      {
+        id: 'worklife', name: 'Work-Life & Flexibility', color: 'var(--group-worklife)', isPartner: false,
+        categories: [
+          { id: 'wlb', name: 'Work-Life Balance', description: 'Expected hours, on-call, crunch culture', weight: 4, defaultWeight: 4, isCustom: false, hidden: false },
+          { id: 'remote', name: 'Remote / Hybrid Flexibility', description: 'WFH policy, async culture', weight: 4, defaultWeight: 4, isCustom: false, hidden: false },
+          { id: 'pto', name: 'PTO & Leave', description: 'Vacation days, parental leave, sick leave', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'commute', name: 'Commute', description: 'Time, cost, stress of getting to office', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+        ]
+      },
+      {
+        id: 'location', name: 'Location & Lifestyle', color: 'var(--group-location)', isPartner: false,
+        categories: [
+          { id: 'loc_quality', name: 'Location Quality', description: 'City amenities, climate, things to do', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'proximity', name: 'Proximity to Family / Friends', description: 'Distance from people who matter', weight: 2, defaultWeight: 2, isCustom: false, hidden: false },
+          { id: 'housing', name: 'Housing Market', description: 'Ability to buy or rent comfortably', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+        ]
+      },
+      {
+        id: 'partner', name: 'Partner Considerations', color: 'var(--group-partner)', isPartner: true,
+        categories: [
+          { id: 'partner_jobs', name: "Partner's Job Market", description: "Availability of good roles for partner in that area", weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'partner_pref', name: "Partner's Location Preference", description: 'How much partner wants to live there overall', weight: 3, defaultWeight: 3, isCustom: false, hidden: false },
+          { id: 'partner_career', name: "Partner's Career Impact", description: "Effect on partner's career trajectory", weight: 2, defaultWeight: 2, isCustom: false, hidden: false },
+          { id: 'partner_social', name: 'Social / Community Fit', description: "Partner's existing network, community opportunities", weight: 2, defaultWeight: 2, isCustom: false, hidden: false },
+        ]
+      },
+    ],
+    jobs: []
+  };
+}
+
+// ── State Management ─────────────────────────────────────────
+
+const STORAGE_KEY = 'job_comparison_tool_state';
+let state;
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.version === 1) {
+        state = parsed;
+        return;
+      }
+    }
+  } catch (e) { /* ignore parse errors */ }
+  state = getDefaultState();
+}
+
+let saveTimeout;
+function saveState() {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.warn('Could not save to localStorage:', e);
+    }
+  }, 200);
+}
+
+// ── Calculation ──────────────────────────────────────────────
+
+function getVisibleCategories() {
+  const cats = [];
+  for (const g of state.groups) {
+    if (g.isPartner && !state.partnerMode) continue;
+    for (const c of g.categories) {
+      if (!c.hidden) cats.push(c);
+    }
+  }
+  return cats;
+}
+
+function calculateWeightedScore(job) {
+  let weightedSum = 0;
+  let weightSum = 0;
+  let scored = 0;
+  const visibleCats = getVisibleCategories();
+
+  for (const cat of visibleCats) {
+    const score = job.scores[cat.id];
+    if (score != null) {
+      weightedSum += score * cat.weight;
+      weightSum += 10 * cat.weight;
+      scored++;
+    }
+  }
+
+  if (weightSum === 0) return { score: null, scored, total: visibleCats.length };
+  return {
+    score: (weightedSum / weightSum) * 10,
+    scored,
+    total: visibleCats.length
+  };
+}
+
+function calculateGroupScore(job, group) {
+  let weightedSum = 0;
+  let weightSum = 0;
+
+  for (const cat of group.categories) {
+    if (cat.hidden) continue;
+    const score = job.scores[cat.id];
+    if (score != null) {
+      weightedSum += score * cat.weight;
+      weightSum += 10 * cat.weight;
+    }
+  }
+
+  if (weightSum === 0) return null;
+  return (weightedSum / weightSum) * 10;
+}
+
+// ── Helpers ──────────────────────────────────────────────────
+
+function sanitize(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function getCellColor(score) {
+  if (score == null) return 'transparent';
+  const hue = (score - 1) * (120 / 9); // 0 (red) to 120 (green)
+  return `hsl(${hue}, 42%, 88%)`;
+}
+
+function getRowExtremes(catId) {
+  let best = null, worst = null, bestVal = -1, worstVal = 11;
+  let count = 0;
+  for (const job of state.jobs) {
+    const s = job.scores[catId];
+    if (s != null) {
+      count++;
+      if (s > bestVal) { bestVal = s; best = job.id; }
+      if (s < worstVal) { worstVal = s; worst = job.id; }
+    }
+  }
+  if (count < 2) return { best: null, worst: null };
+  if (bestVal === worstVal) return { best: null, worst: null };
+  return { best, worst };
+}
+
+function nextId() {
+  return 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+function nextCatId() {
+  return 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+// ── Actions ──────────────────────────────────────────────────
+
+function addJob() {
+  state.jobs.push({
+    id: nextId(),
+    name: 'Job ' + (state.jobs.length + 1),
+    notes: '',
+    scores: {}
+  });
+  saveState();
+  render();
+}
+
+function removeJob(jobId) {
+  state.jobs = state.jobs.filter(j => j.id !== jobId);
+  saveState();
+  render();
+}
+
+function updateScore(jobId, catId, value) {
+  const job = state.jobs.find(j => j.id === jobId);
+  if (!job) return;
+  if (value === '' || value == null) {
+    delete job.scores[catId];
+  } else {
+    const num = Math.min(10, Math.max(1, parseInt(value)));
+    if (!isNaN(num)) job.scores[catId] = num;
+  }
+  saveState();
+  updateDisplayInPlace();
+}
+
+function updateWeight(catId, value) {
+  for (const g of state.groups) {
+    for (const c of g.categories) {
+      if (c.id === catId) {
+        c.weight = Math.min(5, Math.max(1, parseInt(value)));
+        saveState();
+        updateDisplayInPlace();
+        return;
+      }
+    }
+  }
+}
+
+function updateJobName(jobId, name) {
+  const job = state.jobs.find(j => j.id === jobId);
+  if (job) { job.name = name; saveState(); renderSummary(); }
+}
+
+function updateJobNotes(jobId, notes) {
+  const job = state.jobs.find(j => j.id === jobId);
+  if (job) { job.notes = notes; saveState(); }
+}
+
+function togglePartnerMode() {
+  state.partnerMode = !state.partnerMode;
+  saveState();
+  render();
+}
+
+function addCustomCategory(groupId) {
+  const name = prompt('Category name:');
+  if (!name || !name.trim()) return;
+  const desc = prompt('Description (optional):') || '';
+  const group = state.groups.find(g => g.id === groupId);
+  if (!group) return;
+  group.categories.push({
+    id: nextCatId(),
+    name: name.trim(),
+    description: desc.trim(),
+    weight: 3,
+    defaultWeight: 3,
+    isCustom: true,
+    hidden: false
+  });
+  saveState();
+  render();
+}
+
+function removeCategory(catId) {
+  for (const g of state.groups) {
+    const idx = g.categories.findIndex(c => c.id === catId);
+    if (idx !== -1) {
+      if (g.categories[idx].isCustom) {
+        g.categories.splice(idx, 1);
+      } else {
+        g.categories[idx].hidden = true;
+      }
+      // Clean up scores
+      for (const job of state.jobs) delete job.scores[catId];
+      saveState();
+      render();
+      return;
+    }
+  }
+}
+
+function resetWeights() {
+  for (const g of state.groups) {
+    for (const c of g.categories) {
+      c.weight = c.defaultWeight;
+    }
+  }
+  saveState();
+  render();
+}
+
+function resetAll() {
+  if (!confirm('Reset everything? All jobs and scores will be lost.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  state = getDefaultState();
+  render();
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'job-comparison-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData() {
+  document.getElementById('importFile').click();
+}
+
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!data.version || !data.groups || !data.jobs) {
+        alert('Invalid file format.');
+        return;
+      }
+      state = data;
+      saveState();
+      render();
+    } catch (err) {
+      alert('Could not parse file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// ── In-place Update (no DOM rebuild) ─────────────────────────
+
+function updateDisplayInPlace() {
+  // Update score cell backgrounds and best/worst borders
+  const allScoreCells = document.querySelectorAll('.score-cell');
+  for (const cell of allScoreCells) {
+    const input = cell.querySelector('.score-input');
+    if (!input) continue;
+    const jobId = input.dataset.jobId;
+    const catId = input.dataset.catId;
+    const job = state.jobs.find(j => j.id === jobId);
+    const score = job ? job.scores[catId] : null;
+    cell.style.background = getCellColor(score);
+  }
+
+  // Update best/worst borders per category row
+  const catIds = new Set();
+  for (const g of state.groups) {
+    if (g.isPartner && !state.partnerMode) continue;
+    for (const c of g.categories) {
+      if (!c.hidden) catIds.add(c.id);
+    }
+  }
+
+  for (const catId of catIds) {
+    const extremes = getRowExtremes(catId);
+    const cells = document.querySelectorAll(`.score-input[data-cat-id="${catId}"]`);
+    for (const input of cells) {
+      const cell = input.closest('.score-cell');
+      cell.classList.remove('best-in-row', 'worst-in-row');
+      if (extremes.best === input.dataset.jobId) cell.classList.add('best-in-row');
+      else if (extremes.worst === input.dataset.jobId) cell.classList.add('worst-in-row');
+    }
+  }
+
+  // Update weight dots
+  const allWeightDots = document.querySelectorAll('.weight-dots');
+  for (const container of allWeightDots) {
+    const catId = container.dataset.catId;
+    let weight = 3;
+    for (const g of state.groups) {
+      for (const c of g.categories) {
+        if (c.id === catId) { weight = c.weight; break; }
+      }
+    }
+    const dots = container.querySelectorAll('.weight-dot');
+    dots.forEach((dot, i) => {
+      dot.classList.toggle('filled', i < weight);
+    });
+  }
+
+  // Update group subtotals
+  const subtotalCells = document.querySelectorAll('.subtotal-score');
+  let subtotalIdx = 0;
+  for (const group of state.groups) {
+    if (group.isPartner && !state.partnerMode) continue;
+    for (const job of state.jobs) {
+      const gs = calculateGroupScore(job, group);
+      if (subtotalCells[subtotalIdx]) {
+        subtotalCells[subtotalIdx].textContent = gs != null ? gs.toFixed(1) : '--';
+      }
+      subtotalIdx++;
+    }
+  }
+
+  // Update overall totals
+  const totalCells = document.querySelectorAll('.total-score');
+  state.jobs.forEach((job, i) => {
+    const result = calculateWeightedScore(job);
+    if (totalCells[i]) {
+      totalCells[i].textContent = result.score != null ? result.score.toFixed(1) : '--';
+    }
+  });
+
+  // Update summary bar
+  renderSummary();
+}
+
+// ── Render ───────────────────────────────────────────────────
+
+function renderSummary() {
+  const bar = document.getElementById('summaryBar');
+  if (state.jobs.length === 0) {
+    bar.innerHTML = '';
+    return;
+  }
+
+  const scored = state.jobs.map(job => {
+    const result = calculateWeightedScore(job);
+    return { job, ...result };
+  }).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+
+  let rank = 0;
+  bar.innerHTML = scored.map((item, i) => {
+    if (item.score != null) rank = i + 1;
+    const rankClass = rank <= 3 && item.score != null ? `rank-${rank}` : '';
+    const badge = rank <= 3 && item.score != null ? `<div class="rank-badge">${rank}</div>` : '';
+    const scoreDisplay = item.score != null ? item.score.toFixed(1) : '--';
+    return `
+      <div class="summary-card ${rankClass}">
+        ${badge}
+        <div class="summary-name" title="${sanitize(item.job.name)}">${sanitize(item.job.name)}</div>
+        <div class="summary-score">${scoreDisplay}</div>
+        <div class="summary-completeness">${item.scored} / ${item.total} scored</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderGrid() {
+  const main = document.getElementById('mainContent');
+
+  if (state.jobs.length === 0) {
+    main.innerHTML = `
+      <div class="empty-state">
+        <h2>No jobs to compare yet</h2>
+        <p>Add your first job opportunity to get started.</p>
+        <button class="btn btn-primary" onclick="addJob()">+ Add Your First Job</button>
+      </div>
+    `;
+    return;
+  }
+
+  const jobs = state.jobs;
+  let html = '<div class="grid-wrapper"><table class="grid">';
+
+  // Header row
+  html += '<thead><tr>';
+  html += '<th class="col-category">Category</th>';
+  html += '<th class="col-weight">Weight</th>';
+  for (const job of jobs) {
+    html += `<th class="col-job job-header">
+      <input class="job-name-input" value="${sanitize(job.name)}" maxlength="40"
+        data-job-id="${job.id}" data-action="rename">
+      <div class="job-header-actions">
+        <button class="btn-icon" title="Toggle notes" data-action="toggle-notes" data-job-id="${job.id}">📝</button>
+        <button class="btn-icon danger" title="Remove job" data-action="remove-job" data-job-id="${job.id}">✕</button>
+      </div>
+    </th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  // Notes row
+  html += '<tr class="notes-row">';
+  html += '<td class="col-category" style="font-size:12px;color:var(--color-text-secondary)">Notes</td>';
+  html += '<td class="col-weight"></td>';
+  for (const job of jobs) {
+    html += `<td class="col-job">
+      <textarea class="notes-textarea" placeholder="Notes..." data-job-id="${job.id}" data-action="notes">${sanitize(job.notes)}</textarea>
+    </td>`;
+  }
+  html += '</tr>';
+
+  // Groups and categories
+  for (const group of state.groups) {
+    if (group.isPartner && !state.partnerMode) continue;
+
+    // Group header
+    html += `<tr class="group-header"><td class="col-category" style="background:${group.color}">${group.isPartner ? '👥 ' : ''}${sanitize(group.name)}</td>`;
+    html += `<td class="col-weight" style="background:${group.color}"></td>`;
+    for (const job of jobs) {
+      html += `<td class="col-job" style="background:${group.color}"></td>`;
+    }
+    html += '</tr>';
+
+    // Category rows
+    const visibleCats = group.categories.filter(c => !c.hidden);
+    for (const cat of visibleCats) {
+      const extremes = getRowExtremes(cat.id);
+      html += '<tr>';
+      html += `<td class="col-category">
+        <div class="cat-name">
+          <span>${sanitize(cat.name)}</span>
+          ${cat.description ? `<span class="info-icon" data-tooltip="${sanitize(cat.description)}">i</span>` : ''}
+          <button class="btn-icon danger" style="width:18px;height:18px;font-size:11px;" title="${cat.isCustom ? 'Remove' : 'Hide'}" data-action="remove-cat" data-cat-id="${cat.id}">✕</button>
+        </div>
+      </td>`;
+      html += `<td class="col-weight">
+        <div class="weight-dots" data-cat-id="${cat.id}" data-action="weight">
+          ${[1,2,3,4,5].map(w => `<div class="weight-dot${w <= cat.weight ? ' filled' : ''}" data-weight="${w}"></div>`).join('')}
+        </div>
+      </td>`;
+
+      for (const job of jobs) {
+        const score = job.scores[cat.id];
+        const bg = getCellColor(score);
+        let cls = 'col-job score-cell';
+        if (extremes.best === job.id) cls += ' best-in-row';
+        else if (extremes.worst === job.id) cls += ' worst-in-row';
+
+        html += `<td class="${cls}" style="background:${bg}">
+          <input class="score-input" type="number" min="1" max="10" placeholder="-"
+            value="${score != null ? score : ''}"
+            data-job-id="${job.id}" data-cat-id="${cat.id}" data-action="score">
+        </td>`;
+      }
+      html += '</tr>';
+    }
+
+    // Add category button
+    html += `<tr><td class="col-category" style="padding:4px 12px;">
+      <button class="add-category-btn" data-action="add-cat" data-group-id="${group.id}">+ Add category</button>
+    </td><td class="col-weight"></td>`;
+    for (const job of jobs) html += '<td class="col-job"></td>';
+    html += '</tr>';
+
+    // Group subtotal
+    html += '<tr class="subtotal-row">';
+    html += `<td class="col-category" style="background:${group.color}">${sanitize(group.name)} Subtotal</td>`;
+    html += `<td class="col-weight" style="background:${group.color}"></td>`;
+    for (const job of jobs) {
+      const gs = calculateGroupScore(job, group);
+      html += `<td class="col-job" style="background:${group.color}"><span class="subtotal-score">${gs != null ? gs.toFixed(1) : '--'}</span></td>`;
+    }
+    html += '</tr>';
+  }
+
+  // Total row
+  html += '<tr class="total-row">';
+  html += '<td class="col-category">Overall Score</td>';
+  html += '<td class="col-weight"><button class="add-category-btn" onclick="resetWeights()" style="font-size:11px;">Reset weights</button></td>';
+  for (const job of jobs) {
+    const result = calculateWeightedScore(job);
+    html += `<td class="col-job"><span class="total-score">${result.score != null ? result.score.toFixed(1) : '--'}</span></td>`;
+  }
+  html += '</tr>';
+
+  html += '</tbody></table></div>';
+  main.innerHTML = html;
+}
+
+function render() {
+  document.getElementById('partnerToggle').checked = state.partnerMode;
+  renderSummary();
+  renderGrid();
+}
+
+// ── Event Delegation ─────────────────────────────────────────
+
+document.addEventListener('input', function(e) {
+  const el = e.target;
+  const action = el.dataset.action;
+
+  if (action === 'score') {
+    updateScore(el.dataset.jobId, el.dataset.catId, el.value);
+  } else if (action === 'rename') {
+    updateJobName(el.dataset.jobId, el.value);
+  } else if (action === 'notes') {
+    updateJobNotes(el.dataset.jobId, el.value);
+  }
+});
+
+document.addEventListener('click', function(e) {
+  const el = e.target;
+
+  // Weight dots
+  if (el.classList.contains('weight-dot')) {
+    updateWeight(el.parentElement.dataset.catId, el.dataset.weight);
+    return;
+  }
+
+  const action = el.dataset.action || el.closest('[data-action]')?.dataset.action;
+  const target = el.closest('[data-action]');
+
+  if (action === 'remove-job') {
+    if (confirm('Remove this job?')) {
+      removeJob(target.dataset.jobId);
+    }
+  } else if (action === 'remove-cat') {
+    removeCategory(target.dataset.catId);
+  } else if (action === 'add-cat') {
+    addCustomCategory(target.dataset.groupId);
+  }
+});
+
+// Header buttons
+document.getElementById('addJobBtn').addEventListener('click', addJob);
+document.getElementById('exportBtn').addEventListener('click', exportData);
+document.getElementById('importBtn').addEventListener('click', importData);
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+document.getElementById('partnerToggle').addEventListener('change', togglePartnerMode);
+document.getElementById('importFile').addEventListener('change', handleImport);
+
+// ── Init ─────────────────────────────────────────────────────
+
+loadState();
+render();
+</script>
+</body>
+</html>
